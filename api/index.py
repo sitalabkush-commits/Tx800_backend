@@ -23,7 +23,7 @@ except Exception as e:
 
 def transcribe_audio(base64_audio):
     """আপনার ভয়েসকে টেক্সটে রূপান্তর (Groq Whisper)"""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_audio:
         temp_audio.write(base64.b64decode(base64_audio))
         temp_path = temp_audio.name
 
