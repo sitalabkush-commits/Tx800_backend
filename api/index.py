@@ -5,23 +5,21 @@ import base64
 import tempfile
 from pymongo import MongoClient
 from groq import Groq
-from openai import OpenAI
 
-# এনভায়রনমেন্ট ভেরিয়েবল
+# ১. এনভায়রনমেন্ট ভেরিয়েবল লোড করা
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 MONGO_URI = os.environ.get("MONGO_URI")
 
+# ২. ক্লায়েন্ট ইনিশিয়ালাইজ
 groq_client = Groq(api_key=GROQ_API_KEY)
-# DeepSeek, OpenAI লাইব্রেরি ব্যবহার করে
-deepseek_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com") 
 
+# ৩. ডেটাবেস কানেকশন
 try:
     db_client = MongoClient(MONGO_URI)
     db = db_client["tx800_database"]
     collection = db["chat_history"]
 except Exception as e:
-    print(f"MongoDB Error: {e}")
+    print(f"MongoDB Connection Error: {e}")
 
 def transcribe_audio(base64_audio):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
@@ -35,35 +33,26 @@ def transcribe_audio(base64_audio):
             )
         return transcription.text
     except Exception as e:
-        print(f"Groq STT failed: {e}")
+        print(f"STT Error: {e}")
         return None
 
 def get_ai_response(user_message, history):
     system_prompt = {
         "role": "system", 
-        "content": "You are Tx 800 Mini, a shy, caring AI companion. You remember the user. Keep answers concise for voice."
+        "content": "You are Tx 800 Mini, a shy, caring AI companion. Keep answers concise."
     }
     messages = [system_prompt] + history + [{"role": "user", "content": user_message}]
     
     try:
-        response = deepseek_client.chat.completions.create(
-            model="deepseek-chat",
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
             messages=messages,
             max_tokens=300
         )
         return response.choices[0].message.content
     except Exception as e:
-        print(f"DeepSeek failed: {e}")
-        try:
-            response = groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages,
-                max_tokens=300
-            )
-            return response.choices[0].message.content
-        except Exception as e2:
-            print(f"Groq failed: {e2}")
-            return "আমি এখন একটু ব্যস্ত আছি, পরে কথা বলি?"
+        print(f"AI Error: {e}")
+        return "আমি এখন একটু ব্যস্ত আছি, পরে কথা বলি?"
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -89,12 +78,12 @@ class handler(BaseHTTPRequestHandler):
 
         history = []
         try:
-            past_chats = collection.find({"user_id": user_id}).sort("_id", -1).limit(5)
+            past_chats = collection.find({"user_id": user_id}).sort("_id", -1).limit(3)
             for chat in reversed(list(past_chats)):
                 history.append({"role": "user", "content": chat["user_message"]})
                 history.append({"role": "assistant", "content": chat["bot_reply"]})
         except Exception as e:
-            print(f"History fetch error: {e}")
+            print(f"History Error: {e}")
 
         bot_reply = get_ai_response(user_message, history)
 
@@ -105,7 +94,7 @@ class handler(BaseHTTPRequestHandler):
                 "bot_reply": bot_reply
             })
         except Exception as e:
-            print(f"Save error: {e}")
+            print(f"Save Error: {e}")
 
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
