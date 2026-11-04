@@ -5,17 +5,16 @@ import base64
 import tempfile
 from pymongo import MongoClient
 from groq import Groq
-
+from openai import OpenAI
 
 # এনভায়রনমেন্ট ভেরিয়েবল
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
-
 MONGO_URI = os.environ.get("MONGO_URI")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
+# DeepSeek, OpenAI লাইব্রেরি ব্যবহার করে
 deepseek_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com") 
-
 
 try:
     db_client = MongoClient(MONGO_URI)
@@ -36,6 +35,7 @@ def transcribe_audio(base64_audio):
             )
         return transcription.text
     except Exception as e:
+        print(f"Groq STT failed: {e}")
         return None
 
 def get_ai_response(user_message, history):
@@ -53,6 +53,7 @@ def get_ai_response(user_message, history):
         )
         return response.choices[0].message.content
     except Exception as e:
+        print(f"DeepSeek failed: {e}")
         try:
             response = groq_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
@@ -61,6 +62,7 @@ def get_ai_response(user_message, history):
             )
             return response.choices[0].message.content
         except Exception as e2:
+            print(f"Groq failed: {e2}")
             return "আমি এখন একটু ব্যস্ত আছি, পরে কথা বলি?"
 
 class handler(BaseHTTPRequestHandler):
@@ -92,7 +94,7 @@ class handler(BaseHTTPRequestHandler):
                 history.append({"role": "user", "content": chat["user_message"]})
                 history.append({"role": "assistant", "content": chat["bot_reply"]})
         except Exception as e:
-            pass
+            print(f"History fetch error: {e}")
 
         bot_reply = get_ai_response(user_message, history)
 
@@ -103,7 +105,7 @@ class handler(BaseHTTPRequestHandler):
                 "bot_reply": bot_reply
             })
         except Exception as e:
-            pass
+            print(f"Save error: {e}")
 
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
