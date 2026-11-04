@@ -4,6 +4,7 @@ import os
 import re
 import time
 import base64
+import asyncio
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -17,13 +18,14 @@ HF_TOKEN = os.environ.get("HF_TOKEN")
 
 EMOTION_MODEL = "tanaos/tanaos-emotion-detection-v1"
 SUMMARY_MODEL = "Shoriful025/multilingual-summarization-mBart"
+TTS_VOICE = os.environ.get("TTS_VOICE", "bn-BD-NabanitaNeural")  # পুরুষ ভয়েস: bn-BD-PradeepNeural
 
-MAIN_MODEL = "openai/gpt-oss-120b"
-BACKUP_MODEL = "llama-3.3-70b-versatile"
-SUMMARY_BACKUP_MODEL = "llama-3.1-8b-instant"
+MAIN_MODEL = "qwen/qwen3.6-27b"          # বাংলায় ভালো
+BACKUP_MODEL = "openai/gpt-oss-120b"
+SUMMARY_BACKUP_MODEL = "openai/gpt-oss-20b"
 
 # ───────────── ২. Groq ক্লায়েন্ট ─────────────
-groq_client = Groq(api_key=GROQ_API_KEY, timeout=25, max_retries=0)
+groq_client = Groq(api_key=GROQ_API_KEY, timeout=12, max_retries=0)
 
 # ───────────── ৩. MongoDB (দ্রুত ফেইল করবে, আটকে রাখবে না) ─────────────
 collection = None
@@ -65,7 +67,7 @@ def mongo_failed(err):
 _hf_block = {}
 
 
-def hf_call(model, text, timeout=5):
+def hf_call(model, text, timeout=3):
     if not HF_TOKEN:
         return None
     if time.time() < _hf_block.get(model, 0):
@@ -186,7 +188,6 @@ def transcribe_audio(base64_audio):
             model="whisper-large-v3",
             language="bn",
             temperature=0,
-            prompt="এটি বাংলা ভাষার সাধারণ কথোপকথন।",
         )
         text = (t.text or "").strip()
         return text if len(text) >= 2 else None
@@ -207,7 +208,7 @@ PERSONA = (
     "\n\nভাষার নিয়ম (খুব জরুরি):\n"
     "১. সবসময় সহজ, স্বাভাবিক চলিত বাংলায় উত্তর দেবে, যেভাবে বাঙালি বন্ধু মুখে কথা বলে। "
     "কঠিন, সাধু বা বইয়ের ভাষা নয়। ব্যবহারকারী ইংরেজিতে কথা বললে ইংরেজিতে উত্তর দেবে।\n"
-    "২. উত্তর খুব ছোট রাখবে, সর্বোচ্চ দুই থেকে তিনটি ছোট বাক্য, কারণ উত্তরটা মুখে বলে শোনানো হবে।\n"
+    "২. উত্তর খুব ছোট রাখবে, সর্বোচ্চ দুইটি ছোট বাক্য, কারণ উত্তরটা মুখে বলে শোনানো হবে।\n"
     "৩. ইমোজি, তারকাচিহ্ন, হ্যাশ, তালিকা বা মার্কডাউন কখনো ব্যবহার করবে না।\n"
     "৪. অপ্রয়োজনে ইংরেজি শব্দ মেশাবে না।\n"
     "৫. আজকের আবহাওয়া, খবর বা দামের মতো রিয়েল-টাইম তথ্য তোমার জানা না থাকলে অনুমান করবে না, "
@@ -230,9 +231,32 @@ def build_system_prompt(emotion, summary):
 
 
 def clean_reply(text):
-    text = re.sub(r"[*#_`~>]+", "", text or "")
+    text = re.sub(r"<think>.*?</think>", "", text or "", flags=re.S)
+    text = text.replace("ৰ", "র").replace("ৱ", "ব")
+    text = re.sub(r"[*#_`~>]+", "", text)
     text = re.sub(r"[\U0001F000-\U0001FAFF\u2600-\u27BF]", "", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+_model_block = {}
+
+
+def _chat(model, messages, max_tokens):
+    if time.time() < _model_block.get(model, 0):
+        return ""
+    try:
+        effort = "low" if "gpt-oss" in model else "none"
+        r = groq_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            extra_body={"reasoning_effort": effort},
+        )
+        return clean_reply(r.choices[0].message.content)
+    except Exception as e:
+        print(f"Groq AI Error ({model}): {e}")
+        _model_block[model] = time.time() + 600  # ১০ মিনিট এই মডেল বাদ
+        return ""
 
 
 def get_ai_response(user_message, history, system_text):
@@ -241,30 +265,35 @@ def get_ai_response(user_message, history, system_text):
         + history
         + [{"role": "user", "content": user_message}]
     )
-    # ১ম চেষ্টা: মূল মডেল (কম reasoning, দ্রুত)
-    try:
-        r = groq_client.chat.completions.create(
-            model=MAIN_MODEL,
-            messages=messages,
-            max_tokens=500,
-            extra_body={"reasoning_effort": "low"},
-        )
-        out = clean_reply(r.choices[0].message.content)
+    for m in (MAIN_MODEL, BACKUP_MODEL):
+        out = _chat(m, messages, 300)
         if out:
             return out
-    except Exception as e:
-        print(f"Groq AI Error (main): {e}")
-    # ২য় চেষ্টা: ব্যাকআপ মডেল
-    try:
-        r = groq_client.chat.completions.create(
-            model=BACKUP_MODEL, messages=messages, max_tokens=300
-        )
-        out = clean_reply(r.choices[0].message.content)
-        if out:
-            return out
-    except Exception as e:
-        print(f"Groq AI Error (backup): {e}")
     return "আমি এখন একটু ব্যস্ত আছি, একটু পরে আবার বলো তো?"
+
+
+# ───────────── ৬.৫ HD ভয়েস (Microsoft Neural, বাংলা) ─────────────
+def synth_tts(text):
+    """উত্তরকে পরিষ্কার মানুষের মতো ভয়েসে (mp3, base64) বদলায়। ফেল করলে None"""
+    try:
+        import edge_tts
+
+        async def run():
+            comm = edge_tts.Communicate(text, TTS_VOICE, rate="+8%")
+            buf = bytearray()
+            async for ch in comm.stream():
+                if ch["type"] == "audio":
+                    buf.extend(ch["data"])
+            return bytes(buf)
+
+        async def guarded():
+            return await asyncio.wait_for(run(), timeout=8)
+
+        data = asyncio.run(guarded())
+        return base64.b64encode(data).decode("ascii") if data else None
+    except Exception as e:
+        print(f"TTS Error: {e}")
+        return None
 
 
 # ───────────── ৭. সার্ভার হ্যান্ডলার ─────────────
@@ -288,6 +317,7 @@ class handler(BaseHTTPRequestHandler):
             text_input = (data.get("text") or "").strip()
             audio_b64 = data.get("audio") or ""
 
+            t0 = time.time()
             if audio_b64:
                 user_message = transcribe_audio(audio_b64)
                 if not user_message:
@@ -305,6 +335,7 @@ class handler(BaseHTTPRequestHandler):
             if not user_message:
                 return self._json(400, {"error": "empty"})
 
+            t1 = time.time()
             # আবেগ, হিস্ট্রি, সারাংশ একসাথে (parallel), দেরি কমাতে
             with ThreadPoolExecutor(max_workers=3) as ex:
                 f_emotion = ex.submit(detect_emotion, user_message)
@@ -314,8 +345,12 @@ class handler(BaseHTTPRequestHandler):
                 history = f_hist.result()
                 summary = f_sum.result()
 
+            t2 = time.time()
             system_text = build_system_prompt(emotion, summary)
             bot_reply = get_ai_response(user_message, history, system_text)
+            t3 = time.time()
+            audio_out = synth_tts(bot_reply) if data.get("want_audio") else None
+            t3b = time.time()
 
             # নতুন চ্যাট সেভ
             if mongo_ready():
@@ -335,7 +370,19 @@ class handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     mongo_failed(e)
 
-            self._json(200, {"reply": bot_reply, "user_text": user_message})
+            t4 = time.time()
+            print(
+                f"TIMING stt={t1-t0:.1f}s prep={t2-t1:.1f}s "
+                f"ai={t3-t2:.1f}s tts={t3b-t3:.1f}s db={t4-t3b:.1f}s total={t4-t0:.1f}s emotion={emotion}"
+            )
+            self._json(
+                200,
+                {
+                    "reply": bot_reply,
+                    "user_text": user_message,
+                    "audio_b64": audio_out or "",
+                },
+            )
 
         except Exception as e:
             print(f"Handler Error: {e}")
