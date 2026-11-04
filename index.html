@@ -62,7 +62,8 @@
     </div>
 
     <script>
-        const API_URL = "https://tx800-backend.vercel.app/api"; // আপনার লিংক
+        // এখানে আপনার Vercel API লিংক দিন (শেষে /api থাকতে হবে)
+        const API_URL = "https://tx800-backend.vercel.app/api"; 
         const tg = window.Telegram.WebApp;
         tg.expand();
         
@@ -84,11 +85,18 @@
 
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
+                
+                // মোবাইলের জন্য 'audio/mp4' ফরম্যাট সিলেক্ট করা হলো
+                let options = { mimeType: 'audio/mp4' };
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                    options = { mimeType: 'audio/webm' }; // ফ্যালব্যাক
+                }
+
+                mediaRecorder = new MediaRecorder(stream, options);
                 mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
                 
                 mediaRecorder.onstop = async () => {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
                     audioChunks = [];
                     sendAudioToBackend(audioBlob);
                 };
