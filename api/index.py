@@ -48,7 +48,7 @@ def get_ai_response(user_message, history):
     try:
         # শুধুমাত্র Groq ব্যবহার করা হচ্ছে
         response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=messages,
             max_tokens=300
         )
