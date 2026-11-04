@@ -1,3 +1,4 @@
 groq
 pymongo
 certifi
+edge-tts
