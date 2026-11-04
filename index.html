@@ -4,54 +4,195 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Tx 800 Mini</title>
+    <!-- টেলিগ্রাম স্ক্রিপ্ট -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
+        /* গ্লোবাল সেটিংস */
         * { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
             background-color: #040a10;
-            background-image: linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+            background-image: 
+                linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
             background-size: 30px 30px;
             color: #00f0ff;
-            font-family: 'Courier New', monospace;
-            display: flex; flex-direction: column; align-items: center; height: 100vh; overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
         }
-        .top-bar { width: 100%; display: flex; justify-content: space-between; padding: 20px 15px; font-size: 10px; color: #80b0c0; }
-        .top-badge { border: 1px solid #1a4a5a; padding: 4px 10px; border-radius: 15px; display: flex; align-items: center; gap: 5px; background: rgba(0, 240, 255, 0.03); }
+
+        /* টপ বার (সিস্টেম ইনফো) */
+        .top-bar {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 20px 15px;
+            font-size: 10px;
+            letter-spacing: 1px;
+            color: #80b0c0;
+        }
+
+        .top-badge {
+            border: 1px solid #1a4a5a;
+            padding: 4px 10px;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(0, 240, 255, 0.03);
+        }
+
         .dot-green { color: #00ff66; text-shadow: 0 0 5px #00ff66; font-size: 8px; }
         .dot-blue { color: #00f0ff; text-shadow: 0 0 5px #00f0ff; font-size: 8px; }
-        
-        .scanner-container { margin-top: 5vh; position: relative; width: 280px; height: 280px; display: flex; justify-content: center; align-items: center; cursor: pointer; }
-        .ring-outer { position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 1px dashed rgba(0, 240, 255, 0.2); animation: rotateRight 20s linear infinite; }
-        .ring-inner { position: absolute; width: 70%; height: 70%; border-radius: 50%; border: 1px dashed rgba(0, 240, 255, 0.4); animation: rotateLeft 15s linear infinite; }
-        .orbit-dot { position: absolute; width: 4px; height: 4px; background-color: #fff; border-radius: 50%; box-shadow: 0 0 8px #fff, 0 0 15px #00f0ff; }
-        .od1 { top: 15%; left: 48%; } .od2 { bottom: 25%; right: 20%; } .od3 { top: 45%; left: 15%; } .od4 { bottom: 15%; left: 40%; }
-        
-        .center-core { width: 100px; height: 100px; background: radial-gradient(circle, rgba(0,240,255,0.15) 0%, rgba(4,10,16,1) 80%); border: 1.5px solid #00f0ff; border-radius: 50%; display: flex; justify-content: center; align-items: center; box-shadow: 0 0 25px rgba(0, 240, 255, 0.4); z-index: 10; transition: all 0.3s; }
-        .waveform { display: flex; gap: 3px; align-items: center; height: 30px; }
-        .bar { width: 3px; background-color: #00f0ff; border-radius: 2px; box-shadow: 0 0 8px #00f0ff; height: 10px; transition: height 0.15s ease; }
-        
-        .status-container { margin-top: 30px; display: flex; flex-direction: column; align-items: center; width: 100%; }
-        .listening-text { font-size: 13px; letter-spacing: 4px; color: #b0d0e0; margin-bottom: 8px; text-transform: uppercase; }
-        
-        .response-box { margin-top: 30px; width: 92%; background: rgba(4, 15, 25, 0.7); border: 1px solid #103a4a; border-radius: 15px; padding: 18px; display: none; }
-        .response-header { display: flex; justify-content: space-between; font-size: 10px; color: #00f0ff; padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid rgba(0, 240, 255, 0.15); }
-        .response-content { font-size: 14px; line-height: 1.6; color: #c0dce8; font-family: Arial, sans-serif; }
 
+        /* মেইন স্ক্যানার এরিয়া */
+        .scanner-container {
+            margin-top: 5vh;
+            position: relative;
+            width: 280px;
+            height: 280px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .ring-outer {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 1px dashed rgba(0, 240, 255, 0.2);
+            animation: rotateRight 20s linear infinite;
+        }
+
+        .ring-inner {
+            position: absolute;
+            width: 70%;
+            height: 70%;
+            border-radius: 50%;
+            border: 1px dashed rgba(0, 240, 255, 0.4);
+            animation: rotateLeft 15s linear infinite;
+        }
+
+        .orbit-dot {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background-color: #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 8px #fff, 0 0 15px #00f0ff;
+        }
+        .od1 { top: 15%; left: 48%; }
+        .od2 { bottom: 25%; right: 20%; }
+        .od3 { top: 45%; left: 15%; }
+        .od4 { bottom: 15%; left: 40%; width: 3px; height: 3px; opacity: 0.7;}
+
+        /* সেন্টার কোর (মাইক) */
+        .center-core {
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, rgba(0,240,255,0.15) 0%, rgba(4,10,16,1) 80%);
+            border: 1.5px solid #00f0ff;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 25px rgba(0, 240, 255, 0.4), inset 0 0 20px rgba(0, 240, 255, 0.2);
+            z-index: 10;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .waveform {
+            display: flex;
+            gap: 3px;
+            align-items: center;
+            height: 30px;
+        }
+        
+        .bar {
+            width: 3px;
+            background-color: #00f0ff;
+            border-radius: 2px;
+            box-shadow: 0 0 8px #00f0ff;
+            height: 10px;
+            transition: height 0.15s ease;
+        }
+
+        /* স্ট্যাটাস টেক্সট */
+        .status-container {
+            margin-top: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+
+        .listening-text {
+            font-size: 13px;
+            letter-spacing: 4px;
+            color: #b0d0e0;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        /* রেসপন্স বক্স */
+        .response-box {
+            margin-top: 30px;
+            width: 92%;
+            background: rgba(4, 15, 25, 0.7);
+            border: 1px solid #103a4a;
+            border-radius: 15px;
+            padding: 18px;
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.05);
+            display: none; /* শুরুতে লুকানো থাকবে */
+        }
+
+        .response-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #00f0ff;
+            padding-bottom: 10px;
+            margin-bottom: 12px;
+            letter-spacing: 1.5px;
+            border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+        }
+
+        .response-content {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #c0dce8;
+            font-family: Arial, sans-serif;
+        }
+
+        /* অ্যানিমেশন Keyframes */
         @keyframes rotateRight { 100% { transform: rotate(360deg); } }
         @keyframes rotateLeft { 100% { transform: rotate(-360deg); } }
+        
+        /* জাভাস্ক্রিপ্টের জন্য অ্যাক্টিভ স্টেট */
         .listening .center-core { border-color: #00ffaa; box-shadow: 0 0 35px rgba(0, 255, 170, 0.5); }
         .listening .bar { background-color: #00ffaa; box-shadow: 0 0 10px #00ffaa; }
         .listening .listening-text { color: #00ffaa; text-shadow: 0 0 5px #00ffaa; }
+        
         .show-ui { display: block !important; }
     </style>
 </head>
 <body>
+
     <div class="top-bar">
         <div class="top-badge"><span class="dot-blue">●</span> HEARING</div>
         <div class="top-badge"><span class="dot-green">●</span> BG: ACTIVE</div>
         <div class="top-badge"><span class="dot-blue">●</span> FACE LOCK</div>
     </div>
 
+    <!-- মাইক সার্কেল (এখানে ক্লিক করলে মাইক চালু হবে) -->
     <div class="scanner-container" id="micContainer">
         <div class="ring-outer"></div>
         <div class="ring-inner"></div>
@@ -63,18 +204,28 @@
         </div>
     </div>
 
+    <!-- স্ট্যাটাস -->
     <div class="status-container">
         <div class="listening-text" id="statusText">TAP TO START</div>
     </div>
 
+    <!-- রেসপন্স বক্স -->
     <div class="response-box" id="responseBox">
-        <div class="response-header"><span>⏱️ RESPONSE SYNTHESIS</span><span>CONFIDENCE 99.4%</span></div>
-        <div class="response-content" id="botReply">...</div>
+        <div class="response-header">
+            <span>⏱️ RESPONSE SYNTHESIS</span>
+            <span>CONFIDENCE 99.4%</span>
+        </div>
+        <div class="response-content" id="botReply">
+            ...
+        </div>
     </div>
 
     <script>
-        // আপনার Vercel লিংক
+        // ==========================================
+        // আপনার Vercel API লিংক
+        // ==========================================
         const API_URL = "https://tx800-backend.vercel.app/api"; 
+        
         const tg = window.Telegram.WebApp;
         tg.expand();
         
@@ -86,14 +237,23 @@
         const responseBox = document.getElementById('responseBox');
         const bars = [document.getElementById('b1'), document.getElementById('b2'), document.getElementById('b3'), document.getElementById('b4'), document.getElementById('b5')];
 
+        // ভিজুয়াল ইফেক্টের জন্য
         function animateWaveform(active) {
             bars.forEach(bar => { bar.style.height = active ? Math.floor(Math.random() * 25 + 10) + 'px' : '10px'; });
         }
         setInterval(() => { if (isRecording) animateWaveform(true); }, 100);
 
+        // ==========================================
+        // মাইকে ক্লিক করলে
+        // ==========================================
         micContainer.addEventListener('click', async () => {
             if (isRecording) { stopRecording(); return; }
 
+            // অডিও প্লে ব্লক দূর করার ট্রিক (ব্রাউজারকে অনুমতি দেওয়া)
+            const silentAudio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
+            silentAudio.play().catch(e => console.log("Silent audio play blocked"));
+
+            // প্রথমবার ক্লিক করলে UI দেখাবে
             responseBox.classList.add('show-ui');
             botReply.innerText = "Tx is listening to you...";
 
@@ -101,6 +261,7 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream);
                 mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+                
                 mediaRecorder.onstop = async () => {
                     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                     audioChunks = [];
@@ -112,9 +273,11 @@
                 body.classList.add('listening');
                 statusText.innerText = "LISTENING...";
                 
+                // ৫ সেকেন্ড পর অটো স্টপ
                 setTimeout(() => { if (isRecording) stopRecording(); }, 5000);
+
             } catch (err) {
-                botReply.innerText = "Microphone access denied. Please allow it.";
+                botReply.innerText = "মাইক্রোফোনের অনুমতি দিন।";
                 statusText.innerText = "ERROR";
             }
         });
@@ -127,6 +290,9 @@
             animateWaveform(false);
         }
 
+        // ==========================================
+        // সার্ভারে অডিও পাঠানো এবং উত্তর নেওয়া
+        // ==========================================
         async function sendAudioToBackend(audioBlob) {
             const reader = new FileReader();
             reader.readAsDataURL(audioBlob);
@@ -143,21 +309,33 @@
                         })
                     });
                     
+                    if (!response.ok) throw new Error("Network response was not ok");
+
                     const data = await response.json();
+                    console.log("Server Reply:", data); 
                     
-                    // ১. স্ক্রিনে লেখা দেখাবে
+                    // স্ক্রিনে লেখা দেখাবে
                     botReply.innerText = data.reply;
                     statusText.innerText = "TAP TO TALK AGAIN";
                     
-                    // ২. অডিও প্লে করবে
+                    // ব্রাউজারের TTS দিয়ে ভয়েস আউটপুট
                     const utterance = new SpeechSynthesisUtterance(data.reply);
-                    utterance.lang = 'bn-BD';
-                    utterance.onstart = () => { body.classList.add('listening'); statusText.innerText = "SPEAKING..."; };
-                    utterance.onend = () => { body.classList.remove('listening'); statusText.innerText = "TAP TO TALK"; };
+                    utterance.lang = 'bn-BD'; // বাংলা ভয়েস
+                    
+                    utterance.onstart = () => { 
+                        body.classList.add('listening'); 
+                        statusText.innerText = "SPEAKING..."; 
+                    };
+                    utterance.onend = () => { 
+                        body.classList.remove('listening'); 
+                        statusText.innerText = "TAP TO TALK"; 
+                    };
+                    
                     window.speechSynthesis.speak(utterance);
 
                 } catch (error) {
-                    botReply.innerText = "Connection error. Please check your API link.";
+                    console.error(error);
+                    botReply.innerText = "সার্ভারের সাথে কানেক্ট করা যাচ্ছে না।";
                     statusText.innerText = "ERROR";
                 }
             };
