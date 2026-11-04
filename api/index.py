@@ -5,17 +5,17 @@ import base64
 import tempfile
 from pymongo import MongoClient
 from groq import Groq
-from openai import OpenAI
+
 
 # এনভায়রনমেন্ট ভেরিয়েবল
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
 MONGO_URI = os.environ.get("MONGO_URI")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 deepseek_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com") 
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
 
 try:
     db_client = MongoClient(MONGO_URI)
@@ -36,14 +36,7 @@ def transcribe_audio(base64_audio):
             )
         return transcription.text
     except Exception as e:
-        try:
-            with open(temp_path, "rb") as file:
-                transcription = openai_client.audio.transcriptions.create(
-                    model="whisper-1", file=file
-                )
-            return transcription.text
-        except Exception as e2:
-            return None
+        return None
 
 def get_ai_response(user_message, history):
     system_prompt = {
