@@ -5,6 +5,7 @@ import re
 import time
 import base64
 import asyncio
+import threading
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -63,7 +64,7 @@ def mongo_failed(err):
     _mongo_down_until = time.time() + 60
 
 
-# ───────────── ৪. Hugging Face (timeout=5, ফেইল করলে স্কিপ) ─────────────
+# ───────────── ৪. Hugging Face (ফেইল করলে স্কিপ) ─────────────
 _hf_block = {}
 
 
@@ -92,7 +93,7 @@ def hf_call(model, text, timeout=3):
 def detect_emotion(text):
     """ব্যবহারকারীর মূল আবেগ (joy, sadness, anger, neutral ...)"""
     try:
-        out = hf_call(EMOTION_MODEL, text[:500])
+        out = hf_call(EMOTION_MODEL, text[:500], timeout=1.5)
         if not out:
             return "neutral"
         if isinstance(out, list) and out and isinstance(out[0], list):
@@ -176,6 +177,27 @@ def get_history(user_id):
     except Exception as e:
         mongo_failed(e)
     return history
+
+
+def save_chat(user_id, user_message, bot_reply, emotion):
+    """চ্যাট সেভ ও সারাংশ আপডেট (ভয়েস বানানোর সাথে একসাথে চলে)"""
+    if not mongo_ready():
+        return
+    try:
+        collection.insert_one(
+            {
+                "user_id": user_id,
+                "user_message": user_message,
+                "bot_reply": bot_reply,
+                "emotion": emotion,
+                "ts": time.time(),
+            }
+        )
+        # প্রতি ৫টা কথায় একবার সারাংশ আপডেট
+        if collection.count_documents({"user_id": user_id}) % 5 == 0:
+            update_summary(user_id)
+    except Exception as e:
+        mongo_failed(e)
 
 
 # ───────────── ৫. ভয়েস → লেখা (Groq Whisper) ─────────────
@@ -349,27 +371,19 @@ class handler(BaseHTTPRequestHandler):
             system_text = build_system_prompt(emotion, summary)
             bot_reply = get_ai_response(user_message, history, system_text)
             t3 = time.time()
+
+            # চ্যাট সেভ ব্যাকগ্রাউন্ডে শুরু, ভয়েস বানানোর সাথে একসাথে চলবে
+            saver = threading.Thread(
+                target=save_chat,
+                args=(user_id, user_message, bot_reply, emotion),
+                daemon=True,
+            )
+            saver.start()
+
             audio_out = synth_tts(bot_reply) if data.get("want_audio") else None
             t3b = time.time()
 
-            # নতুন চ্যাট সেভ
-            if mongo_ready():
-                try:
-                    collection.insert_one(
-                        {
-                            "user_id": user_id,
-                            "user_message": user_message,
-                            "bot_reply": bot_reply,
-                            "emotion": emotion,
-                            "ts": time.time(),
-                        }
-                    )
-                    # প্রতি ৫টা কথায় একবার সারাংশ আপডেট
-                    if collection.count_documents({"user_id": user_id}) % 5 == 0:
-                        update_summary(user_id)
-                except Exception as e:
-                    mongo_failed(e)
-
+            saver.join(timeout=5)
             t4 = time.time()
             print(
                 f"TIMING stt={t1-t0:.1f}s prep={t2-t1:.1f}s "
