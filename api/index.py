@@ -210,12 +210,45 @@ def transcribe_audio(base64_audio):
             model="whisper-large-v3",
             language="bn",
             temperature=0,
+            prompt="আমি Tx 800 Mini এর সাথে বাংলায় কথা বলছি। আমার নাম গোরা। পড়াশোনা, কাজ আর দিনের পরিকল্পনা নিয়ে কথা বলছি।",
         )
         text = (t.text or "").strip()
         return text if len(text) >= 2 else None
     except Exception as e:
         print(f"Groq STT Error: {e}")
         return None
+
+
+# ───────────── ৫.৫ শোনা লেখার বানান/ভুল ঠিক করা ─────────────
+def repair_text(text):
+    """ভয়েস থেকে আসা লেখার ভুল শব্দ ও বানান ঠিক করে। ফেল করলে আসল লেখাই ফেরত"""
+    try:
+        r = groq_client.with_options(timeout=4).chat.completions.create(
+            model=SUMMARY_BACKUP_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "তুমি বাংলা ভয়েস-লেখা সংশোধনকারী। নিচের লেখা মাইকে বলা কথা থেকে স্বয়ংক্রিয়ভাবে এসেছে, "
+                        "তাই ভুল শোনা শব্দ বা ভুল বানান থাকতে পারে। "
+                        "নিয়ম: ১) বাংলা কথা রোমান অক্ষরে (Banglish) লেখা থাকলে বাংলা লিপিতে বদলাও। "
+                        "২) ভুল শব্দ ও বানান ঠিক করো, প্রসঙ্গ দেখে সবচেয়ে সম্ভাব্য শব্দ বসাও। "
+                        "৩) অর্থ, বাক্যের ধরন বা কথার সুর বদলাবে না, কিছু যোগ করবে না, উত্তরও দেবে না। "
+                        "৪) সত্যিকারের ইংরেজি শব্দ বা বাক্য ইংরেজিতেই রাখো। "
+                        "শুধু সংশোধিত লেখাটুকু ফেরত দাও।"
+                    ),
+                },
+                {"role": "user", "content": text},
+            ],
+            max_tokens=200,
+            extra_body={"reasoning_effort": "low"},
+        )
+        fixed = clean_reply(r.choices[0].message.content).strip('"\'“”')
+        if fixed and len(fixed) <= len(text) * 3 + 20:
+            return fixed
+    except Exception as e:
+        print(f"Repair Error: {e}")
+    return text
 
 
 # ───────────── ৬. পার্সোনা ও AI উত্তর ─────────────
@@ -241,6 +274,10 @@ PERSONA = (
 
 def build_system_prompt(emotion, summary):
     parts = [PERSONA]
+    parts.append(
+        "\n\nব্যবহারকারীর কথা মাইক থেকে লেখা হয়েছে, তাই দু-একটা শব্দ ভুল থাকতে পারে। "
+        "প্রসঙ্গ বুঝে সঠিক অর্থ ধরে উত্তর দেবে, আর ভুল শব্দ নিয়ে মন্তব্য করবে না।"
+    )
     if emotion and emotion != "neutral":
         parts.append(
             f"\n\nব্যবহারকারীর এখনকার আবেগ: {emotion}। "
@@ -359,13 +396,16 @@ class handler(BaseHTTPRequestHandler):
 
             t1 = time.time()
             # আবেগ, হিস্ট্রি, সারাংশ একসাথে (parallel), দেরি কমাতে
-            with ThreadPoolExecutor(max_workers=3) as ex:
+            with ThreadPoolExecutor(max_workers=4) as ex:
+                f_fix = ex.submit(repair_text, user_message) if audio_b64 else None
                 f_emotion = ex.submit(detect_emotion, user_message)
                 f_hist = ex.submit(get_history, user_id)
                 f_sum = ex.submit(get_summary, user_id)
                 emotion = f_emotion.result()
                 history = f_hist.result()
                 summary = f_sum.result()
+                if f_fix is not None:
+                    user_message = f_fix.result()
 
             t2 = time.time()
             system_text = build_system_prompt(emotion, summary)
